@@ -2,6 +2,9 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <chrono>
+#include <thread>
+#include <string>
 
 bool explosionSoundPlayed = false;
 bool gameOver();
@@ -19,6 +22,10 @@ struct Player
 	double x = 400;
 	double y = 360;
 	double health = 100;
+	double maxHealth = 100;
+	double targetX = 0;
+	double targetY = 0;
+	double smoothDelay = 0.075;
 	int playerTexture = slLoadTexture("Assets\\player.png");
 };
 
@@ -29,7 +36,7 @@ struct Bullet
 	double x = player.x;
 	double y = player.y;
 	double damage = 20;
-	int bulletTexture = slLoadTexture("Assets\\bullet.png");
+	int bulletTexture = slLoadTexture("Assets\\bullet2.png");
 };
 
 struct Helicopter
@@ -44,7 +51,7 @@ struct PlaneBullet {
 	double x = 0;
 	double y = 0;
 	double damage = 20;
-	int bulletTexture = slLoadTexture("Assets\\bullet.png");
+	int bulletTexture = slLoadTexture("Assets\\bullet2.png");
 };
 
 struct Plane 
@@ -72,11 +79,205 @@ struct Tank
 	double y = 90;
 	double health = 300;
 	int tankTexture = slLoadTexture("Assets\\tank.png");
+
 	std::vector<TankBullet> bullets;
+
 	double initialPlayerX;
 	double initialPlayerY;
 };
 
+const std::string basePath = "Assets\\explode_";
+const std::string extension = ".png";
+const int numImages = 10;
+int explosionTextures[numImages];
+
+void initExplosionTextures()
+{
+	for (int i = 0; i < numImages; ++i) {
+		std::string filename = basePath + std::to_string(i) + extension;
+		explosionTextures[i] = slLoadTexture(filename.c_str());
+	}
+}
+
+void drawExplosion(int x, int y)
+{
+	static double explosionX = 100.0;
+	static double explosionY = 100.0;
+	static int currentFrame = 0;
+	static double frameDuration = 0.1;
+
+	double deltaTime = slGetDeltaTime();
+
+	if (currentFrame < 9) {
+		if ((currentFrame + 1) * frameDuration < deltaTime) {
+			currentFrame++;
+		}
+	}
+
+	std::cout << "Explosion Coordinates: (" << x << ", " << y << ")" << std::endl;
+	std::cout << "Current Frame: " << currentFrame << std::endl;
+
+	slSprite(explosionTextures[currentFrame], x, y, 400, 400);
+}
+
+
+bool gameOver();
+bool isColliding(const Bullet& bullet, const Tank& tank);
+bool isColliding(const Bullet& bullet, const Player& player);
+bool isColliding(const Bullet& bullet, const Helicopter& helicopter);
+bool isColliding(const Bullet& bullet, const Plane& plane);
+bool isColliding(const TankBullet& bullet, const Player& player);
+bool isColliding(const PlaneBullet& bullet, const Player& player);
+void shootBullet(Player& player, std::vector<Bullet>& bullets, double& lastShootTime, double shootInterval);
+void updateBullets(std::vector<Bullet>& bullets);
+void showBullet(const Bullet& bullet);
+void showPlayer(Player& player);
+void updatePlayer(Player& player, std::vector<Bullet>& bullets);
+void showHelicopter(const Helicopter& helicopter);
+void updateHelicopter(Helicopter& helicopter, std::vector<Bullet>& bullets);
+void showPlane(const Plane& plane);
+void updatePlane(Plane& plane, std::vector<Bullet>& bullets);
+void showPlaneBullets(const Plane& plane);
+void updatePlaneBullets(Plane& plane, Player& player);
+void showTank(Tank& tank);
+void updateTank(Tank& tank, std::vector<Bullet>& bullets, Player& player);
+void showTankBullets(Tank& tank);
+void updateTankBullets(Tank& tank, Player& player);
+void respawnTank(Tank& tank);
+void shootTankBullet(Tank& tank, double& lastShootTime, double shootInterval, Player& player);
+
+int main()
+{
+	slWindow(1280, 720, "Project S", false);
+
+	Player player;
+	Helicopter Helicopter;
+	Plane plane;
+	Tank tank;
+
+	std::vector<Bullet> bullets;
+	int mainBackground = slLoadTexture("Assets\\main.png");
+	int mainFont = slLoadFont("Assets\\pixel.ttf");
+
+	double lastShootTime = 0.0;
+	double shootInterval = 0.2;
+
+	double tankLastShootTime = 0.0;
+	double tankShootInterval = 2.5;
+
+	double bgSpeed = 800;
+
+	slSetFont(mainFont, 30);
+	slShowCursor(false);
+
+	initExplosionTextures();
+
+	while (!slShouldClose())
+	{
+		if (!gameIsOver)
+		{
+			slSprite(mainBackground, bgSpeed, 400, 6000, 840);
+
+			char pointsString[200];
+			snprintf(pointsString, sizeof(pointsString), "Score: %.1f", playerScore);
+			slText(50, 650, pointsString);
+
+			char healthString[200];
+			snprintf(healthString, sizeof(healthString), "HP: %.1f", player.health);
+			slText(1000, 650, healthString);
+
+			updatePlane(plane, bullets);
+			showPlane(plane);
+
+			updatePlayer(player, bullets);
+			showPlayer(player);
+
+			updateHelicopter(Helicopter, bullets);
+			showHelicopter(Helicopter);
+
+			updatePlane(plane, bullets);
+			updatePlaneBullets(plane, player);
+
+			showPlane(plane);
+			showPlaneBullets(plane);
+
+			updateTank(tank, bullets, player);
+			showTank(tank);
+
+			updateTankBullets(tank, player);
+			showTankBullets(tank);
+
+
+			double currentTime = slGetTime();
+			if (currentTime - tankLastShootTime >= tankShootInterval)
+			{
+				shootTankBullet(tank, tankLastShootTime, tankShootInterval, player);
+			}
+
+			if (slGetMouseButton(SL_MOUSE_BUTTON_1))
+			{
+			shootBullet(player, bullets, lastShootTime, shootInterval);
+			}
+
+			updateBullets(bullets);
+			for (const auto& bullet : bullets)
+			{
+			showBullet(bullet);
+			}
+
+			slRender();
+
+			bgSpeed -= 0.3;
+
+			if (player.health <= 0)
+			{
+				gameIsOver = true;
+			}
+
+			if (slGetKey(SL_KEY_ESCAPE))
+			{
+				slClose();
+			}
+
+			if (slGetMouseButton(SL_MOUSE_BUTTON_2))
+			{
+				drawExplosion(600, 600);
+			}
+
+		}
+		else
+		{
+			gameOver();
+			break;
+		}
+
+	}
+
+	std::cin.get();
+}
+
+bool gameOver()
+{
+	int mainBackground = slLoadTexture("Assets\\main.png");
+	int mainFont = slLoadFont("Assets\\pixel.ttf");
+
+	gameIsOver = true;
+ 
+	slSprite(mainBackground, 640, 360, 6000, 840);
+
+	slSetTextAlign(SL_ALIGN_CENTER);
+	slSetFontSize(40);
+	slText(640, 360, "Game Over");
+
+	char pointsString[200];
+	snprintf(pointsString, sizeof(pointsString), "Your Score: %.1f", playerScore);
+	slSetFontSize(30);
+	slText(640, 320, pointsString);
+
+	slRender(); 
+
+	return true;
+}
 
 bool isColliding(const TankBullet& bullet, const Player& player)
 {
@@ -113,6 +314,8 @@ void showTankBullets(Tank& tank)
 
 void updateTankBullets(Tank& tank, Player& player)
 {
+	double gravity = 0.980665;
+
 	for (auto it = tank.bullets.begin(); it != tank.bullets.end();)
 	{
 		it->x -= it->speed;
@@ -120,15 +323,17 @@ void updateTankBullets(Tank& tank, Player& player)
 		if (isColliding(*it, player))
 		{
 			it = tank.bullets.erase(it);
-			player.health -= 100;
+			player.health -= 80;
 		}
 		else
 		{
 			double angle = 90;
 
+			// Update horizontal position
 			it->x += tan(angle) * it->speed;
-			it->y += sin(angle) * it->speed;
 
+			// Update vertical position with gravity
+			it->y += gravity;  // Adjust this line
 
 			if (it->x < 0 || it->y < 0 || it->x > 1280 || it->y > 700)
 			{
@@ -209,34 +414,23 @@ void updateTank(Tank& tank, std::vector<Bullet>& bullets, Player& player) {
 }
 
 void updatePlayer(Player& player, std::vector<Bullet>& bullets) {
+
 	double mouseX = slGetMouseX();
 	double mouseY = slGetMouseY();
 
-	double deltaX = mouseX - player.x;
-	double deltaY = mouseY - player.y;
+	player.x = player.x + (player.targetX - player.x) * player.smoothDelay;
+	player.y = player.y + (player.targetY - player.y) * player.smoothDelay;
 
-	double angle = atan2(deltaY, deltaX);
+	player.targetX = mouseX;
+	player.targetY = mouseY;
 
-	double speed = 10.0;
+	const double minX = 50.0;
+	const double maxX = 1880.0;
+	const double minY = 20.0;
+	const double maxY = 1050.0;
 
-	player.x += cos(angle) * speed;
-	player.y += sin(angle) * speed;
-
-	player.y += sin(angle) * speed;
-	if (player.y < minY) {
-		player.y = minY;
-	}
-	else if (player.y > maxY) {
-		player.y = maxY;
-	}
-
-	player.x += sin(angle) * speed;
-	if (player.x < minX) {
-		player.x = minX;
-	}
-	else if (player.x > maxX) {
-		player.x = maxX;
-	}
+	player.targetX = std::max(minX, std::min(player.targetX, maxX));
+	player.targetY = std::max(minY, std::min(player.targetY, maxY));
 }
 
 bool isColliding(const Bullet& bullet, const Player& player) 
@@ -255,7 +449,7 @@ void showPlayer(Player& player)
 
 void showBullet(const Bullet& bullet)
 {
-	slSprite(bullet.bulletTexture, bullet.x, bullet.y, 128, 128);
+	slSprite(bullet.bulletTexture, bullet.x, bullet.y - 10, 32, 32);
 }
 
 void shootBullet(Player& player, std::vector<Bullet>& bullets, double& lastShootTime, double shootInterval)
@@ -387,7 +581,8 @@ void showPlane(const Plane& plane) {
 
 void updatePlaneBullets(Plane& plane, Player& player) {
 	double currentTime = slGetTime();
-	double shootInterval = 2.5;
+	double cihuy = 2.5;
+	double shootInterval = cihuy;
 
 	if (currentTime - plane.lastShootTime >= shootInterval) {
 		PlaneBullet bullet;
@@ -414,126 +609,15 @@ void updatePlaneBullets(Plane& plane, Player& player) {
 	{
 		gameOver();
 	}
+
+	if (playerScore >= 500)
+	{
+		cihuy -= 1;
+	}
 }
 
 void showPlaneBullets(const Plane& plane) {
 	for (const auto& bullet : plane.bullets) {
-		slSprite(bullet.bulletTexture, bullet.x, bullet.y, 128, 128);
+		slSprite(bullet.bulletTexture, bullet.x, bullet.y - 10, 32, 32);
 	}
-}
-
-int main()
-{
-	slWindow(1280, 720, "Project S", false);
-
-	Player player;
-	Helicopter Helicopter;
-	Plane plane;
-	Tank tank;
-
-	std::vector<Bullet> bullets;
-	int mainBackground = slLoadTexture("Assets\\main.png");
-	int mainFont = slLoadFont("Assets\\pixel.ttf");
-
-	double lastShootTime = 0.0;
-	double shootInterval = 0.175;
-
-	double tankLastShootTime = 0.0;
-	double tankShootInterval = 1.5;
-
-	double bgSpeed = 800;
-
-	slSetFont(mainFont, 30);
-	slShowCursor(false);
-
-	while (!slShouldClose())
-	{
-		if (!gameIsOver)
-		{
-			slSprite(mainBackground, bgSpeed, 400, 6000, 840);
-
-			char pointsString[200];
-			snprintf(pointsString, sizeof(pointsString), "Score: %.1f", playerScore);
-			slText(50, 650, pointsString);
-
-			updatePlane(plane, bullets);
-			showPlane(plane);
-
-			updatePlayer(player, bullets);
-			showPlayer(player);
-
-			updateHelicopter(Helicopter, bullets);
-			showHelicopter(Helicopter);
-
-			updatePlane(plane, bullets);
-			updatePlaneBullets(plane, player);
-
-			showPlane(plane);
-			showPlaneBullets(plane);
-
-			updateTank(tank, bullets, player);
-			showTank(tank);
-
-			updateTankBullets(tank, player);
-			showTankBullets(tank);
-
-			double currentTime = slGetTime();
-			if (currentTime - tankLastShootTime >= tankShootInterval)
-			{
-				shootTankBullet(tank, tankLastShootTime, tankShootInterval, player);
-			}
-
-			if (slGetMouseButton(SL_MOUSE_BUTTON_1))
-			{
-			shootBullet(player, bullets, lastShootTime, shootInterval);
-			}
-
-			updateBullets(bullets);
-			for (const auto& bullet : bullets)
-			{
-			showBullet(bullet);
-			}
-
-
-			slRender();
-
-			bgSpeed -= 0.3;
-
-			if (player.health <= 0)
-			{
-				gameIsOver = true;
-			}
-		}
-		else
-		{
-			gameOver();
-			break;
-		}
-
-	}
-
-	std::cin.get();
-}
-
-bool gameOver()
-{
-	int mainBackground = slLoadTexture("Assets\\main.png");
-	int mainFont = slLoadFont("Assets\\pixel.ttf");
-
-	gameIsOver = true;
- 
-	slSprite(mainBackground, 640, 360, 6000, 840);
-
-	slSetTextAlign(SL_ALIGN_CENTER);
-	slSetFontSize(40);
-	slText(640, 360, "Game Over");
-
-	char pointsString[200];
-	snprintf(pointsString, sizeof(pointsString), "Your Score: %.1f", playerScore);
-	slSetFontSize(30);
-	slText(640, 320, pointsString);
-
-	slRender(); 
-
-	return true;
 }
