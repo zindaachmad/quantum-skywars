@@ -9,6 +9,7 @@
 bool explosionSoundPlayed = false;
 bool gameOver();
 bool gameIsOver = false;
+int bulletShotSound;
 
 const double minY = 50.0;
 const double maxY = 700.0;
@@ -91,6 +92,15 @@ const std::string extension = ".png";
 const int numImages = 10;
 int explosionTextures[numImages];
 
+struct ExplosionState {
+	double explosionX = 100.0;
+	double explosionY = 100.0;
+	int currentFrame = 0;
+	double frameDuration = 0.1;
+};
+
+ExplosionState explosionState;
+
 void initExplosionTextures()
 {
 	for (int i = 0; i < numImages; ++i) {
@@ -101,25 +111,24 @@ void initExplosionTextures()
 
 void drawExplosion(int x, int y)
 {
-	static double explosionX = 100.0;
-	static double explosionY = 100.0;
-	static int currentFrame = 0;
-	static double frameDuration = 0.1;
-
 	double deltaTime = slGetDeltaTime();
 
-	if (currentFrame < 9) {
-		if ((currentFrame + 1) * frameDuration < deltaTime) {
-			currentFrame++;
+	if (explosionState.currentFrame < 9)
+	{
+		if ((explosionState.currentFrame + 1) * explosionState.frameDuration < deltaTime)
+		{
+			explosionState.currentFrame++;
 		}
 	}
 
-	std::cout << "Explosion Coordinates: (" << x << ", " << y << ")" << std::endl;
-	std::cout << "Current Frame: " << currentFrame << std::endl;
-
-	slSprite(explosionTextures[currentFrame], x, y, 400, 400);
+	slSprite(explosionTextures[explosionState.currentFrame], x, y, 400, 400);
 }
 
+
+
+void initBulletShotSound() {
+	bulletShotSound = slLoadWAV("Assets\\shoot.wav");
+}
 
 bool gameOver();
 bool isColliding(const Bullet& bullet, const Tank& tank);
@@ -155,12 +164,14 @@ int main()
 	Plane plane;
 	Tank tank;
 
+	initBulletShotSound();
+
 	std::vector<Bullet> bullets;
 	int mainBackground = slLoadTexture("Assets\\main.png");
 	int mainFont = slLoadFont("Assets\\pixel.ttf");
 
 	double lastShootTime = 0.0;
-	double shootInterval = 0.2;
+	double shootInterval = 0.1;
 
 	double tankLastShootTime = 0.0;
 	double tankShootInterval = 2.5;
@@ -237,11 +248,6 @@ int main()
 			if (slGetKey(SL_KEY_ESCAPE))
 			{
 				slClose();
-			}
-
-			if (slGetMouseButton(SL_MOUSE_BUTTON_2))
-			{
-				drawExplosion(600, 600);
 			}
 
 		}
@@ -463,6 +469,8 @@ void shootBullet(Player& player, std::vector<Bullet>& bullets, double& lastShoot
 		bullet.y = player.y;
 		bullets.push_back(bullet);
 
+		slSoundPlay(bulletShotSound);
+
 		lastShootTime = currentTime;
 	}
 }
@@ -565,6 +573,8 @@ void updatePlane(Plane& plane, std::vector<Bullet>& bullets) {
 		if (!explosionSoundPlayed) {
 			int explode = slLoadWAV("SFX\\explosion.wav");
 			playerScore += 25;
+			explosionState.explosionX = plane.x;  // Set explosion position
+			explosionState.explosionY = plane.y;
 		}
 		respawnPlane(plane); 
 	}
@@ -572,6 +582,13 @@ void updatePlane(Plane& plane, std::vector<Bullet>& bullets) {
 	if (plane.x <= -100)
 	{
 		respawnPlane(plane);
+	}
+
+	double deltaTime = slGetDeltaTime();
+	if (explosionState.currentFrame < 9) {
+		if ((explosionState.currentFrame + 1) * explosionState.frameDuration < deltaTime) {
+			explosionState.currentFrame++;
+		}
 	}
 }
 
