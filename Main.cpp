@@ -5,11 +5,21 @@
 #include <chrono>
 #include <thread>
 #include <string>
+#include <random>
 
 bool explosionSoundPlayed = false;
-bool gameOver();
+void updateExplosions();
+void showExplosions(int explodeFrame);
 bool gameIsOver = false;
+bool gameIsRunning = true;
+bool gameIsFinished = false;
+
 int bulletShotSound;
+int explodeSound;
+int collectSound;
+int hitSound;
+int hurtSound;
+int mainSound;
 
 const double minY = 50.0;
 const double maxY = 700.0;
@@ -18,9 +28,17 @@ const double maxX = 1200.0;
 
 double playerScore = 0;
 
+double getRandomX() {
+	return static_cast<double>(960);
+}
+
+double getRandomY() {
+	return static_cast<double>(std::rand() % (500 - 300 + 1) + 500);
+}
+
 struct Player
 {
-	double x = 400;
+	double x = -400;
 	double y = 360;
 	double health = 100;
 	double maxHealth = 100;
@@ -28,6 +46,24 @@ struct Player
 	double targetY = 0;
 	double smoothDelay = 0.075;
 	int playerTexture = slLoadTexture("Assets\\player.png");
+	double shootInterval = 0.3;
+};
+
+struct Rapid
+{
+	double x = rand() % (1800 - 200 + 1) + 200;
+	double y = 3000;
+	int texture = slLoadTexture("Assets\\rapid.png");
+	bool isActive;
+	int count = 0;
+};
+
+struct Heal
+{
+	double x = rand() % (1800 - 200 + 1) + 200;
+	double y = 3000;
+	int texture = slLoadTexture("Assets\\heal.png");
+	bool isActive;
 };
 
 struct Bullet
@@ -42,8 +78,8 @@ struct Bullet
 
 struct Helicopter
 {
-	double x = 1500;
-	double y = std::rand() % (600 - 200 + 1) + 100;
+	double x = 2100;
+	double y = std::rand() % (1000 - 400 + 1) + 400;
 	double health = 30;
 	int helicopterTexture = slLoadTexture("Assets\\helicopter.png");
 };
@@ -55,29 +91,31 @@ struct PlaneBullet {
 	int bulletTexture = slLoadTexture("Assets\\bullet2.png");
 };
 
-struct Plane 
+struct Plane
 {
-	double x = 1500;
-	double y = std::rand() % (700 - 100 + 1) + 125;
+	double x = 2100;
+	double y = std::rand() % (1000 - 400 + 1) + 400;
 	double health = 60;
+	double lastShootTime = 0.0;
+	double speed = 2;
+
 	int planeTexture = slLoadTexture("Assets\\plane1.png");
 	std::vector<PlaneBullet> bullets;
-	double lastShootTime = 0.0;
 };
 
 struct TankBullet
 {
 	double x = 0;
 	double y = 0;
-	double damage = 100;
+	double damage = 50;
 	int tankBulletTexture = slLoadTexture("Assets\\tankbullet.png");
 	double speed = 1.0;
 };
 
 struct Tank
 {
-	double x = 1500;
-	double y = 90;
+	double x = 3000;
+	double y = 190;
 	double health = 300;
 	int tankTexture = slLoadTexture("Assets\\tank.png");
 
@@ -87,56 +125,55 @@ struct Tank
 	double initialPlayerY;
 };
 
-const std::string basePath = "Assets\\explode_";
-const std::string extension = ".png";
-const int numImages = 10;
-int explosionTextures[numImages];
-
-struct ExplosionState {
-	double explosionX = 100.0;
-	double explosionY = 100.0;
-	int currentFrame = 0;
-	double frameDuration = 0.1;
+struct Explosion
+{
+	double x, y;
+	double animationDelay;
+	bool active;
 };
 
-ExplosionState explosionState;
-
-void initExplosionTextures()
-{
-	for (int i = 0; i < numImages; ++i) {
-		std::string filename = basePath + std::to_string(i) + extension;
-		explosionTextures[i] = slLoadTexture(filename.c_str());
-	}
-}
-
-void drawExplosion(int x, int y)
-{
-	double deltaTime = slGetDeltaTime();
-
-	if (explosionState.currentFrame < 9)
-	{
-		if ((explosionState.currentFrame + 1) * explosionState.frameDuration < deltaTime)
-		{
-			explosionState.currentFrame++;
-		}
-	}
-
-	slSprite(explosionTextures[explosionState.currentFrame], x, y, 400, 400);
-}
-
-
-
 void initBulletShotSound() {
-	bulletShotSound = slLoadWAV("Assets\\shoot.wav");
+	bulletShotSound = slLoadWAV("Assets\\shoot2.wav");
 }
 
-bool gameOver();
+void initExplodeSound() {
+	explodeSound = slLoadWAV("Assets\\explosion.wav");
+}
+
+void initHitSound() {
+	hitSound = slLoadWAV("Assets\\hit.wav");
+}
+
+void initHurtSound()
+{
+	hurtSound = slLoadWAV("Assets\\hurt.wav");
+}
+
+void initMainSound()
+{
+	mainSound = slLoadWAV("Assets\\aduh.wav");
+}
+
+void initCollectSound()
+{
+	collectSound = slLoadWAV("Assets\\collect.wav");
+}
+
+bool gameOver(Player& player, Helicopter& Helicopter, Plane& plane, Tank& tank, Rapid& rapid, Heal& heal, std::vector<Bullet>& bullets);
+bool gameFinished(Player& player, Helicopter& Helicopter, Plane& plane, Tank& tank, Rapid& rapid, Heal& heal, std::vector<Bullet>& bullets);
+void resetGame(Player& player, Helicopter& Helicopter, Plane& plane, Tank& tank, Rapid& rapid, Heal& heal, std::vector<Bullet>& bullets);
 bool isColliding(const Bullet& bullet, const Tank& tank);
 bool isColliding(const Bullet& bullet, const Player& player);
 bool isColliding(const Bullet& bullet, const Helicopter& helicopter);
 bool isColliding(const Bullet& bullet, const Plane& plane);
 bool isColliding(const TankBullet& bullet, const Player& player);
 bool isColliding(const PlaneBullet& bullet, const Player& player);
+bool isColliding(const Heal& heal, const Player& player);
+void showHeal(Heal& heal);
+void updateHeal(Heal& heal, Player& player);
+bool isColliding(const Rapid& rapid, const Player& player);
+void showRapid(Rapid& rapid);
+void updateRapid(Rapid& rapid, Player& player);
 void shootBullet(Player& player, std::vector<Bullet>& bullets, double& lastShootTime, double shootInterval);
 void updateBullets(std::vector<Bullet>& bullets);
 void showBullet(const Bullet& bullet);
@@ -155,62 +192,114 @@ void updateTankBullets(Tank& tank, Player& player);
 void respawnTank(Tank& tank);
 void shootTankBullet(Tank& tank, double& lastShootTime, double shootInterval, Player& player);
 
+std::vector<Explosion> explode;
+std::vector<int> explosions;
+
 int main()
 {
-	slWindow(1280, 720, "Project S", false);
+	slWindow(1920, 1080, "Project S", false);
 
 	Player player;
 	Helicopter Helicopter;
 	Plane plane;
 	Tank tank;
+	Rapid rapid;
+	Heal heal;
 
 	initBulletShotSound();
+	initExplodeSound();
+	initHitSound();
+	initMainSound();
+	initCollectSound();
 
 	std::vector<Bullet> bullets;
-	int mainBackground = slLoadTexture("Assets\\main.png");
+
+	std::random_device rd;
+	explosions;
+	{
+	explosions.push_back(slLoadTexture("Assets\\explode_0.png"));
+	explosions.push_back(slLoadTexture("Assets\\explode_1.png"));
+	explosions.push_back(slLoadTexture("Assets\\explode_2.png"));
+	explosions.push_back(slLoadTexture("Assets\\explode_3.png"));
+	explosions.push_back(slLoadTexture("Assets\\explode_4.png"));
+	explosions.push_back(slLoadTexture("Assets\\explode_5.png"));
+	explosions.push_back(slLoadTexture("Assets\\explode_6.png"));
+	explosions.push_back(slLoadTexture("Assets\\explode_7.png"));
+	explosions.push_back(slLoadTexture("Assets\\explode_8.png"));
+	explosions.push_back(slLoadTexture("Assets\\explode_9.png"));
+	}
+
+	Explosion exp;
+	exp.x = 500;
+	exp.y = 500;
+
+	int explodeFrame = 0;
+	double delay = 0.2;
+
+	double lastExplodeFrameTime = 0.0;
+	double explodeFrameDelay = 0.01;
+
 	int mainFont = slLoadFont("Assets\\pixel.ttf");
 
+	int bg1 = slLoadTexture("Assets\\sky.png");
+	int bg2 = slLoadTexture("Assets\\1.png");
+	int bg3 = slLoadTexture("Assets\\2.png");
+	int bg4 = slLoadTexture("Assets\\3.png");
+	int bg5 = slLoadTexture("Assets\\4.png");
+
+	int ui = slLoadTexture("Assets\\ui.png");
+
+	double backgroundX1 = 2100;
+	double backgroundX2 = 2100;
+	double backgroundX3 = 2100;
+	double backgroundX4 = 2100;
+	double foregroundX = 2100;
+
+	double backgroundMove1 = 0.3;
+	double backgroundMove2 = 0.5;
+	double backgroundMove3 = 0.7;
+	double backgroundMove4 = 0.9;
+	double foregroundMove = 1.1;
+
 	double lastShootTime = 0.0;
-	double shootInterval = 0.1;
+	double shootInterval = player.shootInterval;
 
 	double tankLastShootTime = 0.0;
-	double tankShootInterval = 2.5;
+	double tankShootInterval = 3;
 
-	double bgSpeed = 800;
-
-	slSetFont(mainFont, 30);
+	slSetFont(mainFont, 25);
 	slShowCursor(false);
 
-	initExplosionTextures();
+	slSoundLoop(mainSound);
 
 	while (!slShouldClose())
 	{
-		if (!gameIsOver)
+
+		if (gameIsRunning)
 		{
-			slSprite(mainBackground, bgSpeed, 400, 6000, 840);
+			slSprite(bg1, backgroundX1 + 4200, 600, 4200, 1120);
+			slSprite(bg1, backgroundX1, 600, 4200, 1120);
 
-			char pointsString[200];
-			snprintf(pointsString, sizeof(pointsString), "Score: %.1f", playerScore);
-			slText(50, 650, pointsString);
+			slSprite(bg2, backgroundX2 + 4200, 540, 4200, 1120);
+			slSprite(bg2, backgroundX2, 540, 4200, 1120);
 
-			char healthString[200];
-			snprintf(healthString, sizeof(healthString), "HP: %.1f", player.health);
-			slText(1000, 650, healthString);
+			slSprite(bg3, backgroundX3 + 4200, 540, 4200, 1120);
+			slSprite(bg3, backgroundX3, 540, 4200, 1120);
 
-			updatePlane(plane, bullets);
-			showPlane(plane);
+			slSprite(bg4, backgroundX4 + 4200, 580, 4200, 1120);
+			slSprite(bg4, backgroundX4, 580, 4200, 1120);
 
-			updatePlayer(player, bullets);
-			showPlayer(player);
+			if (foregroundX >= 500)
+			{
+				showRapid(rapid);
+				updateRapid(rapid, player);
+			}
 
-			updateHelicopter(Helicopter, bullets);
-			showHelicopter(Helicopter);
-
-			updatePlane(plane, bullets);
-			updatePlaneBullets(plane, player);
-
-			showPlane(plane);
-			showPlaneBullets(plane);
+			if (backgroundX4 >= 600)
+			{
+				showHeal(heal);
+				updateHeal(heal, player);
+			}
 
 			updateTank(tank, bullets, player);
 			showTank(tank);
@@ -218,31 +307,89 @@ int main()
 			updateTankBullets(tank, player);
 			showTankBullets(tank);
 
+			slSprite(bg5, foregroundX + 4200, 540, 4200, 1120);
+			slSprite(bg5, foregroundX, 540, 4200, 1120);
+
+			slSprite(ui, 960, 570, 2200, 1105.92);
 
 			double currentTime = slGetTime();
+
+			char pointsString[200];
+			snprintf(pointsString, sizeof(pointsString), "Score: %.1f/5000", playerScore);
+			slText(50, 1030, pointsString);
+
+			char healthString[200];
+			snprintf(healthString, sizeof(healthString), "HP: %.1f/100.0", player.health);
+			slText(1550, 1030, healthString);
+
+			slText(700, 1030, "Quantum Skywars 2.0");
+
+			updateExplosions();
+			showExplosions(explodeFrame);
+
+			if (currentTime - lastExplodeFrameTime >= explodeFrameDelay)
+			{
+				explodeFrame = (explodeFrame + 1) % explosions.size();
+				lastExplodeFrameTime = currentTime;
+			}
+
+			updatePlayer(player, bullets);
+			showPlayer(player);
+
+			updateHelicopter(Helicopter, bullets);
+			showHelicopter(Helicopter);
+
+			showPlane(plane);
+			showPlaneBullets(plane);
+
+			updatePlane(plane, bullets);
+			updatePlaneBullets(plane, player);
+
+
 			if (currentTime - tankLastShootTime >= tankShootInterval)
 			{
 				shootTankBullet(tank, tankLastShootTime, tankShootInterval, player);
 			}
 
+			if (playerScore >= 1500)
+				tankShootInterval = 2;
+
+			if (playerScore >= 3000)
+				tankShootInterval = 1.5;
+
 			if (slGetMouseButton(SL_MOUSE_BUTTON_1))
 			{
-			shootBullet(player, bullets, lastShootTime, shootInterval);
+				shootBullet(player, bullets, lastShootTime, player.shootInterval);
 			}
 
 			updateBullets(bullets);
 			for (const auto& bullet : bullets)
 			{
-			showBullet(bullet);
+				showBullet(bullet);
 			}
 
 			slRender();
 
-			bgSpeed -= 0.3;
+			backgroundX1 -= backgroundMove1;
+			backgroundX2 -= backgroundMove2;
+			backgroundX3 -= backgroundMove3;
+			backgroundX4 -= backgroundMove4;
+			foregroundX -= foregroundMove;
 
-			if (player.health <= 0)
-			{
-				gameIsOver = true;
+			if (backgroundX1 <= -2100) {
+				backgroundX1 += 2100 * 2;
+			}
+			if (backgroundX2 <= -2100) {
+				backgroundX2 += 2100 * 2;
+			}
+			if (backgroundX3 <= -2100) {
+				backgroundX3 += 2100 * 2;
+			}
+			if (backgroundX4 <= -2100) {
+				backgroundX4 += 2100 * 2;
+			}
+			if (foregroundX <= -2100) {
+				foregroundX += 2100 * 2;
 			}
 
 			if (slGetKey(SL_KEY_ESCAPE))
@@ -250,11 +397,16 @@ int main()
 				slClose();
 			}
 
+			if (playerScore == 100 && player.health > 0) {
+				gameFinished(player, Helicopter, plane, tank, rapid, heal, bullets);
+				gameIsRunning = false;
+			}
+
 		}
-		else
+		else if (player.health <= 0)
 		{
-			gameOver();
-			break;
+			gameOver(player, Helicopter, plane, tank, rapid, heal, bullets);
+			gameIsRunning = false;
 		}
 
 	}
@@ -262,27 +414,190 @@ int main()
 	std::cin.get();
 }
 
-bool gameOver()
+bool gameFinished(Player& player, Helicopter& Helicopter, Plane& plane, Tank& tank, Rapid& rapid, Heal& heal, std::vector<Bullet>& bullets)
 {
-	int mainBackground = slLoadTexture("Assets\\main.png");
 	int mainFont = slLoadFont("Assets\\pixel.ttf");
+	int bg1 = slLoadTexture("Assets\\sky.png");
+	int bg2 = slLoadTexture("Assets\\1.png");
+	int bg3 = slLoadTexture("Assets\\2.png");
+	int bg4 = slLoadTexture("Assets\\3.png");
+	int bg5 = slLoadTexture("Assets\\4.png");
 
-	gameIsOver = true;
- 
-	slSprite(mainBackground, 640, 360, 6000, 840);
+	slSoundStop(mainSound);
+
+	gameIsOver = false;
+	gameIsFinished = true;
+
+
+	slSprite(bg1, 2100, 600, 4200, 1120);
+	slSprite(bg2, 2100, 540, 4200, 1120);
+	slSprite(bg3, 2100, 540, 4200, 1120);
+	slSprite(bg4, 2100, 600, 4200, 1120);
+	slSprite(bg5, 2100, 540, 4200, 1120);
 
 	slSetTextAlign(SL_ALIGN_CENTER);
-	slSetFontSize(40);
-	slText(640, 360, "Game Over");
+	slSetFontSize(70);
+	slText(960, 540, "Congratulations, You Win!");
+
+	slSetTextAlign(0);
+	char pointsString[200];
+	snprintf(pointsString, sizeof(pointsString), "Your Score: %.1f", playerScore);
+	slSetFontSize(30);
+	slText(960, 480, pointsString);
+
+	slText(960, 300, "Code, Audio, Graphics: Zinda Achmad Muzaki\nAudio: Tito Alla Khairi\nGraphics: Yazid Akmal Adyatma\nGraphics: Zacky Abdul Muin");
+
+	slRender();
+
+	return false;
+}
+
+bool gameOver(Player& player, Helicopter& Helicopter, Plane& plane, Tank& tank, Rapid& rapid, Heal& heal, std::vector<Bullet>& bullets)
+{
+	int mainFont = slLoadFont("Assets\\pixel.ttf");
+	int bg1 = slLoadTexture("Assets\\sky.png");
+	int bg2 = slLoadTexture("Assets\\1.png");
+	int bg3 = slLoadTexture("Assets\\2.png");
+	int bg4 = slLoadTexture("Assets\\3.png");
+	int bg5 = slLoadTexture("Assets\\4.png");
+
+	slSoundStop(mainSound);
+
+	gameIsOver = true;
+
+
+	slSprite(bg1, 2100, 600, 4200, 1120);
+	slSprite(bg2, 2100, 540, 4200, 1120);
+	slSprite(bg3, 2100, 540, 4200, 1120);
+	slSprite(bg4, 2100, 600, 4200, 1120);
+	slSprite(bg5, 2100, 540, 4200, 1120);
+
+	slSetTextAlign(SL_ALIGN_CENTER);
+	slSetFontSize(70);
+	slText(960, 540, "Game Over");
 
 	char pointsString[200];
 	snprintf(pointsString, sizeof(pointsString), "Your Score: %.1f", playerScore);
 	slSetFontSize(30);
-	slText(640, 320, pointsString);
+	slText(960, 480, pointsString);
 
-	slRender(); 
+	slRender();
 
 	return true;
+}
+
+void resetGame(Player& player, Helicopter& Helicopter, Plane& plane, Tank& tank, Rapid& rapid, Heal& heal, std::vector<Bullet>& bullets) {
+
+	gameIsOver = false;
+	gameIsRunning = true;
+	playerScore = 0;
+	player.health = 100;
+	slSetFontSize(25);
+
+	bullets.clear();
+
+}
+
+bool isColliding(const Heal& heal, const Player& player)
+{
+	return (heal.x < player.x + 32 &&
+		heal.x + 32 > player.x &&
+		heal.y < player.y + 32 &&
+		heal.y + 32 > player.y);
+}
+
+void showHeal(Heal& heal)
+{
+	if (heal.isActive)
+	{
+		slSprite(heal.texture, heal.x, heal.y, 120, 90);
+	}
+}
+
+void updateHeal(Heal& heal, Player& player)
+{
+	heal.y -= 1;
+
+	if (heal.isActive && isColliding(heal, player))
+	{
+		slSoundPlay(collectSound);
+		if (player.health > 70)
+		{
+			player.health = player.maxHealth;
+		}
+		else
+		{
+			player.health += 30;
+		}
+
+		heal.isActive = false;
+	}
+
+	if (heal.y <= -100)
+	{
+		heal.y = 2000;
+		heal.isActive = true;
+	}
+}
+
+bool isColliding(const Rapid& rapid, const Player& player)
+{
+	return (rapid.x < player.x + 32 &&
+		rapid.x + 32 > player.x &&
+		rapid.y < player.y + 32 &&
+		rapid.y + 32 > player.y);
+}
+
+void showRapid(Rapid& rapid)
+{
+	if (rapid.isActive)
+	{
+		slSprite(rapid.texture, rapid.x, rapid.y, 120, 90);
+	}
+}
+
+void updateRapid(Rapid& rapid, Player& player) 
+{
+	rapid.y -= 1;
+
+	if (rapid.count <= 3) {
+
+		if (rapid.isActive && isColliding(rapid, player))
+		{
+			slSoundPlay(collectSound);
+			player.shootInterval -= 0.05;
+			rapid.isActive = false;
+			rapid.count += 1;
+		}
+
+		if (rapid.y <= -100)
+		{
+			rapid.y = 4000;
+			rapid.isActive = true;
+		}
+	}
+}
+
+void updateExplosions()
+{
+	for (auto& exp : explode)
+	{
+		exp.animationDelay -= slGetDeltaTime();
+
+		if (exp.animationDelay <= 0)
+		{
+			exp.active = false;
+		}
+	}
+	explode.erase(std::remove_if(explode.begin(), explode.end(), [](const Explosion& exp) { return !exp.active; }), explode.end());
+}
+
+void showExplosions(int explodeFrame)
+{
+	for (const auto& exp : explode)
+	{
+		slSprite(explosions[explodeFrame], exp.x, exp.y, 400, 400);
+	}
 }
 
 bool isColliding(const TankBullet& bullet, const Player& player)
@@ -300,7 +615,7 @@ void shootTankBullet(Tank& tank, double& lastShootTime, double shootInterval, Pl
 	if (currentTime - lastShootTime >= shootInterval)
 	{
 		TankBullet bullet;
-		bullet.x = tank.x;  
+		bullet.x = tank.x;
 		bullet.y = tank.y;
 		tank.initialPlayerX = player.x;
 		tank.initialPlayerY = player.y;
@@ -334,14 +649,10 @@ void updateTankBullets(Tank& tank, Player& player)
 		else
 		{
 			double angle = 90;
-
-			// Update horizontal position
 			it->x += tan(angle) * it->speed;
+			it->y += gravity;
 
-			// Update vertical position with gravity
-			it->y += gravity;  // Adjust this line
-
-			if (it->x < 0 || it->y < 0 || it->x > 1280 || it->y > 700)
+			if (it->x < 0 || it->y < 0 || it->x > 1920 || it->y > 1080)
 			{
 				it = tank.bullets.erase(it);
 			}
@@ -366,8 +677,8 @@ void showTank(Tank& tank)
 }
 
 void respawnTank(Tank& tank) {
-	tank.x = 1400;
-	tank.y = 90;
+	tank.x = 2500;
+	tank.y = 190;
 	tank.health = 300;
 }
 
@@ -396,6 +707,7 @@ void updateTank(Tank& tank, std::vector<Bullet>& bullets, Player& player) {
 		{
 			tank.health -= it->damage;
 			it = bullets.erase(it);
+			slSoundPlay(hitSound);
 		}
 		else
 		{
@@ -407,8 +719,15 @@ void updateTank(Tank& tank, std::vector<Bullet>& bullets, Player& player) {
 
 	if (tank.health <= 0) {
 		if (!explosionSoundPlayed) {
-			int explode = slLoadWAV("SFX\\explosion.wav");
+			slSoundPlay(explodeSound);
 			playerScore += 100;
+
+			Explosion explosion;
+			explosion.x = tank.x;
+			explosion.y = tank.y;
+			explosion.animationDelay = 0.1;
+			explosion.active = true;
+			explode.push_back(explosion);
 		}
 		respawnTank(tank);
 	}
@@ -432,14 +751,14 @@ void updatePlayer(Player& player, std::vector<Bullet>& bullets) {
 
 	const double minX = 50.0;
 	const double maxX = 1880.0;
-	const double minY = 20.0;
-	const double maxY = 1050.0;
+	const double minY = 100.0;
+	const double maxY = 980.0;
 
 	player.targetX = std::max(minX, std::min(player.targetX, maxX));
 	player.targetY = std::max(minY, std::min(player.targetY, maxY));
 }
 
-bool isColliding(const Bullet& bullet, const Player& player) 
+bool isColliding(const Bullet& bullet, const Player& player)
 {
 
 	return (bullet.x < player.x + 128 &&
@@ -450,7 +769,7 @@ bool isColliding(const Bullet& bullet, const Player& player)
 
 void showPlayer(Player& player)
 {
-	slSprite(player.playerTexture, static_cast<int>(round(player.x)) , static_cast<int>(round(player.y)), 256, 256);
+	slSprite(player.playerTexture, static_cast<int>(round(player.x)), static_cast<int>(round(player.y)), 256, 256);
 }
 
 void showBullet(const Bullet& bullet)
@@ -501,17 +820,16 @@ bool isColliding(const Bullet& bullet, const Plane& plane) {
 
 void respawnHelicopter(Helicopter& Helicopter)
 {
-	const int minY = 100;
-	Helicopter.x = 1400;
-	Helicopter.y = std::rand() % (720 - minY);
-	Helicopter.health = 30;
+	Helicopter.x = 2100;
+	Helicopter.y = std::rand() % (900 - 400 + 1) + 400;
+	Helicopter.health = 100;
+
 	explosionSoundPlayed = false;
 }
 
 void updateHelicopter(Helicopter& helicopter, std::vector<Bullet>& bullets)
 {
-	double speed = 1.25;
-	helicopter.x -= speed;
+	helicopter.x -= 4;
 
 	for (auto it = bullets.begin(); it != bullets.end();)
 	{
@@ -519,6 +837,7 @@ void updateHelicopter(Helicopter& helicopter, std::vector<Bullet>& bullets)
 		{
 			helicopter.health -= it->damage;
 			it = bullets.erase(it);
+			slSoundPlay(hitSound);
 		}
 		else
 		{
@@ -531,8 +850,15 @@ void updateHelicopter(Helicopter& helicopter, std::vector<Bullet>& bullets)
 		playerScore += 25;
 		if (!explosionSoundPlayed)
 		{
-			int explode = slLoadWAV("SFX\\explosion.wav");
+			slSoundPlay(explodeSound);
 		}
+
+		Explosion explosion;
+		explosion.x = helicopter.x;
+		explosion.y = helicopter.y;
+		explosion.animationDelay = 0.1;
+		explosion.active = true;
+		explode.push_back(explosion);
 
 		respawnHelicopter(helicopter);
 	}
@@ -545,38 +871,45 @@ void updateHelicopter(Helicopter& helicopter, std::vector<Bullet>& bullets)
 
 void showHelicopter(const Helicopter& Helicopter)
 {
-	slSprite(Helicopter.helicopterTexture, static_cast<int>(round(Helicopter.x)), static_cast<int>(round(Helicopter.y)), 128, 70);
+	slSprite(Helicopter.helicopterTexture, static_cast<int>(round(Helicopter.x)), static_cast<int>(round(Helicopter.y)), 150, 75);
 }
 
 void respawnPlane(Plane& plane) {
-	const int minY = 100;
-	plane.x = 1400;
-	plane.y = std::rand() % (720 - minY);
+
+	plane.x = 2100;
+	plane.y = std::rand() % (900 - 400 + 1) + 400;
 	plane.health = 60;
+
 	explosionSoundPlayed = false;
 }
 
 void updatePlane(Plane& plane, std::vector<Bullet>& bullets) {
-	double speed = 1.5;
-	plane.x -= speed;
+
+	plane.x -= plane.speed;
 
 	for (auto it = bullets.begin(); it != bullets.end();) {
 		if (isColliding(*it, plane)) {
 			plane.health -= it->damage;
 			it = bullets.erase(it);
+			slSoundPlay(hitSound);
 		}
 		else {
 			++it;
 		}
 	}
 	if (plane.health <= 0) {
+		Explosion explosion;
+		explosion.x = plane.x;
+		explosion.y = plane.y;
+		explosion.animationDelay = 0.1;
+		explosion.active = true;
+		explode.push_back(explosion);
+
 		if (!explosionSoundPlayed) {
-			int explode = slLoadWAV("SFX\\explosion.wav");
+			slSoundPlay(explodeSound);
 			playerScore += 25;
-			explosionState.explosionX = plane.x;  // Set explosion position
-			explosionState.explosionY = plane.y;
 		}
-		respawnPlane(plane); 
+		respawnPlane(plane);
 	}
 
 	if (plane.x <= -100)
@@ -584,24 +917,19 @@ void updatePlane(Plane& plane, std::vector<Bullet>& bullets) {
 		respawnPlane(plane);
 	}
 
-	double deltaTime = slGetDeltaTime();
-	if (explosionState.currentFrame < 9) {
-		if ((explosionState.currentFrame + 1) * explosionState.frameDuration < deltaTime) {
-			explosionState.currentFrame++;
-		}
-	}
 }
 
 void showPlane(const Plane& plane) {
-	slSprite(plane.planeTexture, static_cast<int>(round(plane.x)), static_cast<int>(round(plane.y)), 128, 50);
+	slSprite(plane.planeTexture, static_cast<int>(round(plane.x)), static_cast<int>(round(plane.y)), 140, 60);
 }
 
 void updatePlaneBullets(Plane& plane, Player& player) {
-	double currentTime = slGetTime();
-	double cihuy = 2.5;
-	double shootInterval = cihuy;
 
-	if (currentTime - plane.lastShootTime >= shootInterval) {
+	double currentTime = slGetTime();
+	double shootInterval = 2.5;
+
+	if (currentTime - plane.lastShootTime >= shootInterval) 
+	{
 		PlaneBullet bullet;
 		bullet.x = plane.x;
 		bullet.y = plane.y;
@@ -611,29 +939,36 @@ void updatePlaneBullets(Plane& plane, Player& player) {
 	}
 
 	for (auto it = plane.bullets.begin(); it != plane.bullets.end();) {
-		it->x -= 5.5;
+		it->x -= 7;
 
 		if (isColliding(*it, player)) {
 			player.health -= it->damage;
 			it = plane.bullets.erase(it);
+			slSoundPlay(hurtSound);
 		}
 		else {
 			++it;
 		}
 	}
-	
+
 	if (player.health == 0)
 	{
-		gameOver();
+		gameIsRunning = false;
 	}
 
 	if (playerScore >= 500)
 	{
-		cihuy -= 1;
+		shootInterval = 1.5;
+	}
+
+	if (playerScore >= 1500) 
+	{
+		shootInterval = 1;
 	}
 }
 
 void showPlaneBullets(const Plane& plane) {
+
 	for (const auto& bullet : plane.bullets) {
 		slSprite(bullet.bulletTexture, bullet.x, bullet.y - 10, 32, 32);
 	}
